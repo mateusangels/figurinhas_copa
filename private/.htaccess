@@ -1,0 +1,8 @@
+# Bloqueia qualquer acesso web direto a esta pasta (PDF e pedidos).
+# (Idealmente a pasta 'private' deve ficar FORA do public_html.)
+Require all denied
+# compatibilidade com Apache 2.2
+<IfModule !mod_authz_core.c>
+  Order deny,allow
+  Deny from all
+</IfModule>

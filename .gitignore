@@ -1,0 +1,9 @@
+node_modules/
+.env
+private/orders.json
+private/album/*.pdf
+_tools/
+npm-debug.log*
+
+# nunca versionar PDFs (produto pago / arquivos grandes)
+*.pdf
