@@ -1,6 +1,7 @@
 node_modules/
 .env
 private/orders.json
+private/analytics.json
 private/album/*.pdf
 _tools/
 npm-debug.log*

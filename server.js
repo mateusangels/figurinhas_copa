@@ -19,8 +19,11 @@ const PUBLIC_DIR = path.join(__dirname, 'public_html');
 const PDF_PATH   = path.join(__dirname, 'private', 'album', 'album-completo-copa-2026.pdf');
 const PDF_NAME   = 'Album-Completo-Copa-2026.pdf';
 const ORDERS_FILE = path.join(__dirname, 'private', 'orders.json');
+const STATS_FILE  = path.join(__dirname, 'private', 'analytics.json');
+const DASHBOARD_PATH = path.join(__dirname, 'private', 'dashboard.html');
 
 const app = express();
+app.set('trust proxy', true); // atrás do proxy da Hostinger, pega o IP/proto real
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -31,6 +34,28 @@ function getPedido(id) { return lerPedidos()[id] || null; }
 function setPedido(p) { const o = lerPedidos(); o[p.id] = p; salvarPedidos(o); }
 function pedidoPorToken(t) { return Object.values(lerPedidos()).find((p) => p.token === t) || null; }
 const novoId = () => 'al_' + crypto.randomBytes(10).toString('hex');
+
+/* ── Métricas (dashboard) — agregadas por dia em JSON no disco ────────────── */
+function lerStats() { try { return JSON.parse(fs.readFileSync(STATS_FILE, 'utf8')); } catch { return { dias: {} }; } }
+function salvarStats(s) { fs.mkdirSync(path.dirname(STATS_FILE), { recursive: true }); fs.writeFileSync(STATS_FILE, JSON.stringify(s, null, 2)); }
+const diaHoje = () => new Date().toISOString().slice(0, 10);
+function registrar(tipo, opts = {}) {
+  try {
+    const s = lerStats();
+    const dia = diaHoje();
+    const d = s.dias[dia] || (s.dias[dia] = { visitas: 0, unicos: [], checkouts: 0, pagos: 0, receita: 0 });
+    if (tipo === 'visita') {
+      d.visitas++;
+      if (opts.visitorId && !d.unicos.includes(opts.visitorId)) d.unicos.push(opts.visitorId);
+    } else if (tipo === 'checkout') {
+      d.checkouts++;
+    } else if (tipo === 'pago') {
+      d.pagos++;
+      d.receita += Number(opts.valor || PRECO);
+    }
+    salvarStats(s);
+  } catch (e) { console.error('registrar', e?.message || e); }
+}
 
 /* ── Mercado Pago (SDK oficial — igual ao curriculou) ────────────────────── */
 async function getMercadoPago() {
@@ -77,6 +102,7 @@ async function aoConfirmarPagamento(id, email) {
   p.status = 'pago';
   if (email) p.email = email;
   setPedido(p);
+  registrar('pago', { valor: PRECO }); // venda confirmada
   await enviarEmail(p);
 }
 // Rede de segurança p/ Pix: consulta o MP direto pelo external_reference.
@@ -97,19 +123,21 @@ app.post('/api/criar-pagamento', async (req, res) => {
     if (!mp) return res.status(503).json({ erro: 'Pagamento ainda não configurado (defina MP_ACCESS_TOKEN).' });
     const id = novoId();
     setPedido({ id, token: crypto.randomBytes(16).toString('hex'), status: 'pendente', email: null, criado: new Date().toISOString() });
-    const pref = await new mp.Preference(mp.client).create({
-      body: {
-        items: [{ id: 'album-copa-2026', title: 'Álbum Completo da Copa 2026 (PDF)', quantity: 1, unit_price: Number(PRECO), currency_id: 'BRL' }],
-        external_reference: id,
-        notification_url: `${process.env.BACKEND_URL || FRONT}/api/webhook`,
-        back_urls: {
-          success: `${FRONT}/sucesso.html?order=${id}`,
-          pending: `${FRONT}/sucesso.html?order=${id}`,
-          failure: `${FRONT}/?pagamento=falhou`,
-        },
-        auto_return: 'approved',
+    registrar('checkout'); // clicou em comprar (gerou intenção de pagamento)
+    const ehLocal = /localhost|127\.0\.0\.1/.test(FRONT);
+    const body = {
+      items: [{ id: 'album-copa-2026', title: 'Álbum Completo da Copa 2026 (PDF)', quantity: 1, unit_price: Number(PRECO), currency_id: 'BRL' }],
+      external_reference: id,
+      notification_url: `${process.env.BACKEND_URL || FRONT}/api/webhook`,
+      back_urls: {
+        success: `${FRONT}/sucesso.html?order=${id}`,
+        pending: `${FRONT}/sucesso.html?order=${id}`,
+        failure: `${FRONT}/?pagamento=falhou`,
       },
-    });
+    };
+    // auto_return exige URL pública — no localhost o MP recusa, então só em produção.
+    if (!ehLocal) body.auto_return = 'approved';
+    const pref = await new mp.Preference(mp.client).create({ body });
     res.json({ ok: true, id, init_point: pref.init_point, sandbox_init_point: pref.sandbox_init_point });
   } catch (e) {
     console.error('criar-pagamento', e?.message || e);
@@ -147,6 +175,60 @@ app.get('/api/download/:token', (req, res) => {
   if (!fs.existsSync(PDF_PATH)) return res.status(404).send('Arquivo indisponível no momento.');
   res.download(PDF_PATH, PDF_NAME);
 });
+
+// Beacon de visita disparado pelo front (só aceitamos o evento "visita" do cliente).
+app.post('/api/track', (req, res) => {
+  if (String(req.body?.event || 'visita') === 'visita') {
+    const vid = String(req.body?.vid || '').slice(0, 64) || null;
+    registrar('visita', { visitorId: vid });
+  }
+  res.sendStatus(204);
+});
+
+/* ── Dashboard protegido (HTTP Basic Auth) ───────────────────────────────── */
+function igual(a, b) {
+  const ba = Buffer.from(String(a)), bb = Buffer.from(String(b));
+  return ba.length === bb.length && crypto.timingSafeEqual(ba, bb);
+}
+function requireAdmin(req, res, next) {
+  const USER = process.env.ADMIN_USER || 'admin';
+  const PASS = process.env.ADMIN_PASS;
+  if (!PASS) return res.status(503).send('Dashboard não configurado: defina ADMIN_PASS no .env.');
+  const [tipo, b64] = String(req.headers.authorization || '').split(' ');
+  if (tipo === 'Basic' && b64) {
+    const [u, p] = Buffer.from(b64, 'base64').toString().split(':');
+    if (igual(u, USER) && igual(p, PASS)) return next();
+  }
+  res.set('WWW-Authenticate', 'Basic realm="Dashboard Album Copa 2026"');
+  res.status(401).send('Autenticação necessária.');
+}
+
+const pct = (a, b) => (b > 0 ? Math.round((a / b) * 1000) / 10 : 0);
+app.get('/api/admin/stats', requireAdmin, (req, res) => {
+  const s = lerStats();
+  const dias = Object.entries(s.dias).sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([dia, d]) => ({
+    dia, visitas: d.visitas || 0, unicos: (d.unicos || []).length,
+    checkouts: d.checkouts || 0, pagos: d.pagos || 0, receita: d.receita || 0,
+  }));
+  const tot = dias.reduce((o, d) => ({
+    visitas: o.visitas + d.visitas, checkouts: o.checkouts + d.checkouts,
+    pagos: o.pagos + d.pagos, receita: o.receita + d.receita,
+  }), { visitas: 0, checkouts: 0, pagos: 0, receita: 0 });
+  const uni = new Set();
+  Object.values(s.dias).forEach((d) => (d.unicos || []).forEach((v) => uni.add(v)));
+  const pedidos = Object.values(lerPedidos())
+    .sort((a, b) => (a.criado < b.criado ? 1 : -1)).slice(0, 50)
+    .map((p) => ({ id: p.id, status: p.status, email: p.email, criado: p.criado }));
+  res.json({
+    totais: {
+      ...tot, visitantes: uni.size,
+      convCheckout: pct(tot.checkouts, tot.visitas), // visita -> clicou comprar
+      convVenda: pct(tot.pagos, tot.checkouts),       // clicou comprar -> pagou
+    },
+    dias, pedidos,
+  });
+});
+app.get(['/admin', '/dashboard'], requireAdmin, (req, res) => res.sendFile(DASHBOARD_PATH));
 
 /* ── Site estático ───────────────────────────────────────────────────────── */
 app.use(express.static(PUBLIC_DIR));

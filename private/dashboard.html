@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Dashboard — Álbum da Copa 2026</title>
+<style>
+  :root{ --red:#ea0000; --gold:#ffcf3f; --green:#1d8b3a; --ink:#111; --bg:#0f1115; --card:#1a1d24; --line:#2a2e38; --mut:#9aa3b2; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif; background:var(--bg); color:#eef1f6; }
+  header{ display:flex; align-items:center; gap:14px; padding:18px 22px; border-bottom:1px solid var(--line);
+    background:linear-gradient(90deg,#1a1d24,#15171d); position:sticky; top:0; z-index:5; }
+  header h1{ font-size:18px; margin:0; letter-spacing:.2px; }
+  header .badge{ background:var(--red); color:#fff; font-weight:700; border-radius:8px; padding:4px 9px; font-size:12px; }
+  header .spacer{ flex:1; }
+  button.refresh{ background:var(--gold); color:#111; border:0; border-radius:999px; padding:9px 16px; font-weight:700; cursor:pointer; }
+  button.refresh:active{ transform:translateY(1px); }
+  .wrap{ max-width:1080px; margin:0 auto; padding:22px; }
+  .updated{ color:var(--mut); font-size:12px; margin:0 0 14px; }
+  .cards{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:14px; }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:16px 18px; }
+  .card .lbl{ color:var(--mut); font-size:12px; text-transform:uppercase; letter-spacing:.6px; }
+  .card .val{ font-size:30px; font-weight:800; margin-top:6px; line-height:1; }
+  .card .sub{ color:var(--mut); font-size:12px; margin-top:6px; }
+  .card.green .val{ color:#5fd07e; } .card.gold .val{ color:var(--gold); } .card.red .val{ color:#ff6a6a; }
+  section{ margin-top:26px; }
+  section h2{ font-size:14px; text-transform:uppercase; letter-spacing:.8px; color:var(--mut); margin:0 0 12px; }
+  /* funil */
+  .funnel{ display:grid; gap:8px; }
+  .step{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; position:relative; overflow:hidden; }
+  .step .fill{ position:absolute; inset:0; background:linear-gradient(90deg,rgba(234,0,0,.35),rgba(255,207,63,.18)); width:0; transition:width .6s; }
+  .step .row{ position:relative; display:flex; justify-content:space-between; align-items:center; }
+  .step .name{ font-weight:700; } .step .num{ font-variant-numeric:tabular-nums; }
+  .step .rate{ color:var(--mut); font-size:12px; }
+  /* chart */
+  .chart{ background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  .bars{ display:flex; align-items:flex-end; gap:10px; height:200px; overflow-x:auto; padding-bottom:4px; }
+  .bar{ flex:0 0 auto; width:42px; display:flex; flex-direction:column; align-items:center; gap:6px; height:100%; justify-content:flex-end; }
+  .bar .stack{ width:100%; display:flex; flex-direction:column-reverse; gap:2px; }
+  .bar .seg{ width:100%; border-radius:4px 4px 0 0; }
+  .bar .seg.v{ background:#3a5cff; } .bar .seg.c{ background:var(--gold); } .bar .seg.p{ background:#5fd07e; }
+  .bar .day{ color:var(--mut); font-size:10px; white-space:nowrap; }
+  .legend{ display:flex; gap:16px; margin-top:12px; font-size:12px; color:var(--mut); flex-wrap:wrap; }
+  .legend i{ display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:6px; vertical-align:-1px; }
+  /* tabela */
+  table{ width:100%; border-collapse:collapse; font-size:13px; }
+  th,td{ text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); }
+  th{ color:var(--mut); font-weight:600; text-transform:uppercase; font-size:11px; letter-spacing:.5px; }
+  td.id{ font-family:ui-monospace,Menlo,Consolas,monospace; color:var(--mut); }
+  .tag{ font-size:11px; font-weight:700; padding:3px 9px; border-radius:999px; }
+  .tag.pago{ background:rgba(95,208,126,.18); color:#5fd07e; } .tag.pendente{ background:rgba(255,207,63,.16); color:var(--gold); }
+  .empty{ color:var(--mut); padding:18px; text-align:center; }
+  .tablewrap{ background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:auto; }
+</style>
+</head>
+<body>
+<header>
+  <span class="badge">🏆 COPA 2026</span>
+  <h1>Dashboard de vendas</h1>
+  <span class="spacer"></span>
+  <button class="refresh" onclick="carregar()">↻ Atualizar</button>
+</header>
+
+<div class="wrap">
+  <p class="updated" id="updated">Carregando…</p>
+
+  <div class="cards" id="cards"></div>
+
+  <section>
+    <h2>Funil de conversão (todo o período)</h2>
+    <div class="funnel" id="funnel"></div>
+  </section>
+
+  <section>
+    <h2>Por dia</h2>
+    <div class="chart">
+      <div class="bars" id="bars"></div>
+      <div class="legend">
+        <span><i style="background:#3a5cff"></i>Visitas</span>
+        <span><i style="background:var(--gold)"></i>Cliques comprar</span>
+        <span><i style="background:#5fd07e"></i>Pagas</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pedidos recentes</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Data</th><th>Pedido</th><th>E-mail</th><th>Status</th></tr></thead>
+        <tbody id="orders"></tbody>
+      </table>
+    </div>
+  </section>
+</div>
+
+<script>
+const BRL = (n) => "R$ " + Number(n||0).toFixed(2).replace(".", ",");
+const fmtData = (iso) => { try { return new Date(iso).toLocaleString("pt-BR"); } catch { return iso || "—"; } };
+
+function card(lbl, val, sub, cls){ return `<div class="card ${cls||""}"><div class="lbl">${lbl}</div><div class="val">${val}</div>${sub?`<div class="sub">${sub}</div>`:""}</div>`; }
+
+function render(d){
+  const t = d.totais;
+  document.getElementById("updated").textContent = "Atualizado " + new Date().toLocaleString("pt-BR");
+
+  document.getElementById("cards").innerHTML =
+    card("Visitas", t.visitas, t.visitantes + " visitantes únicos") +
+    card("Cliques comprar", t.checkouts, t.convCheckout + "% das visitas", "gold") +
+    card("Vendas pagas", t.pagos, t.convVenda + "% dos cliques", "green") +
+    card("Receita", BRL(t.receita), "total recebido", "green");
+
+  // funil
+  const steps = [
+    { name:"Visitaram o site", num:t.visitas, base:t.visitas },
+    { name:"Clicaram em comprar", num:t.checkouts, base:t.visitas },
+    { name:"Pagaram", num:t.pagos, base:t.visitas },
+  ];
+  document.getElementById("funnel").innerHTML = steps.map(s => {
+    const w = s.base > 0 ? Math.round((s.num/s.base)*100) : 0;
+    const rate = s.base > 0 ? ((s.num/s.base)*100).toFixed(1)+"%" : "—";
+    return `<div class="step"><div class="fill" style="width:${w}%"></div>
+      <div class="row"><span class="name">${s.name}</span>
+      <span><span class="num">${s.num}</span> <span class="rate">(${rate})</span></span></div></div>`;
+  }).join("");
+
+  // chart por dia
+  const dias = d.dias.slice(-30);
+  const max = Math.max(1, ...dias.map(x => x.visitas));
+  document.getElementById("bars").innerHTML = dias.length ? dias.map(x => {
+    const h = (v) => Math.round((v/max)*160);
+    const dd = x.dia.slice(5).replace("-", "/");
+    return `<div class="bar" title="${x.dia}\nVisitas: ${x.visitas}\nCliques: ${x.checkouts}\nPagas: ${x.pagos}\nReceita: ${BRL(x.receita)}">
+      <div class="stack">
+        <div class="seg v" style="height:${h(x.visitas)}px"></div>
+        <div class="seg c" style="height:${h(x.checkouts)}px"></div>
+        <div class="seg p" style="height:${h(x.pagos)}px"></div>
+      </div><div class="day">${dd}</div></div>`;
+  }).join("") : `<div class="empty">Sem dados ainda.</div>`;
+
+  // pedidos
+  const tb = document.getElementById("orders");
+  tb.innerHTML = d.pedidos.length ? d.pedidos.map(p =>
+    `<tr><td>${fmtData(p.criado)}</td><td class="id">${p.id}</td><td>${p.email||"—"}</td>
+     <td><span class="tag ${p.status}">${p.status}</span></td></tr>`).join("")
+    : `<tr><td colspan="4" class="empty">Nenhum pedido ainda.</td></tr>`;
+}
+
+async function carregar(){
+  try {
+    const r = await fetch("/api/admin/stats", { cache:"no-store" });
+    if (!r.ok) throw new Error(r.status);
+    render(await r.json());
+  } catch (e) {
+    document.getElementById("updated").textContent = "Erro ao carregar dados (" + e.message + ").";
+  }
+}
+carregar();
+setInterval(carregar, 60000); // auto-atualiza a cada 1 min
+</script>
+</body>
+</html>

@@ -48,6 +48,14 @@
   }
 
   document.addEventListener("DOMContentLoaded", () => {
+    // rastreio de visita p/ o dashboard — id anônimo guardado no navegador
+    try {
+      let vid = localStorage.getItem("vid");
+      if (!vid) { vid = Date.now().toString(36) + Math.random().toString(36).slice(2, 10); localStorage.setItem("vid", vid); }
+      fetch("/api/track", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: "visita", vid }), keepalive: true }).catch(() => {});
+    } catch (e) {}
+
     // preenche textos dinâmicos
     const reais = Math.floor(cfg.precoAlbum);
     const cent = Math.round((cfg.precoAlbum - reais) * 100).toString().padStart(2, "0");
