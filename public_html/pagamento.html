@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pagamento — Álbum da Copa 2026</title>
+  <meta name="theme-color" content="#ea0000">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <style>
+    .pay-wrap{min-height:100vh;display:grid;place-items:center;padding:30px}
+    .pay-card{background:#fff;border-radius:32px;box-shadow:var(--shadow);max-width:520px;width:100%;
+      padding:40px 34px;text-align:center;border:1px solid var(--line)}
+    .pay-emoji{font-size:3.4rem;line-height:1;margin-bottom:6px}
+    .pay-card h1{font-size:1.7rem;margin-bottom:8px}
+    .pay-card p{color:var(--muted);margin-bottom:8px}
+    .field{margin:18px 0;text-align:left}
+    .field label{display:block;font-weight:600;font-size:.92rem;margin-bottom:6px}
+    .field input{width:100%;padding:14px 16px;border:2px solid var(--line);border-radius:16px;
+      font-family:inherit;font-size:1rem;outline:none;transition:.15s}
+    .field input:focus{border-color:var(--red)}
+    .qr-img{width:230px;height:230px;margin:10px auto;display:block;border-radius:14px;border:1px solid var(--line)}
+    .valor{font-family:var(--ff-head);font-weight:700;font-size:1.6rem;color:var(--red);margin:4px 0 2px}
+    .copy-row{display:flex;gap:8px;margin:14px 0}
+    .copy-row input{flex:1;padding:12px 14px;border:2px solid var(--line);border-radius:14px;font-size:.82rem;
+      color:var(--muted);background:var(--cream);overflow:hidden;text-overflow:ellipsis}
+    .copy-row button{white-space:nowrap}
+    .spin{width:38px;height:38px;border:4px solid var(--cream-2);border-top-color:var(--red);
+      border-radius:50%;margin:16px auto;animation:rot 1s linear infinite}
+    @keyframes rot{to{transform:rotate(360deg)}}
+    .waiting-note{display:flex;align-items:center;justify-content:center;gap:10px;color:var(--muted);
+      font-size:.9rem;font-weight:600;margin-top:8px}
+    .alt{margin-top:22px;padding-top:18px;border-top:1px solid var(--line)}
+    .alt a{color:var(--muted);font-size:.9rem;text-decoration:underline;cursor:pointer}
+    .err{color:var(--red);font-size:.9rem;min-height:18px;margin-top:6px}
+    .small{font-size:.84rem;color:var(--muted);margin-top:16px}
+    .hide{display:none}
+    .back{display:inline-block;margin-top:18px;color:var(--muted);font-size:.9rem;text-decoration:none}
+  </style>
+</head>
+<body>
+  <div class="dots"></div>
+  <div class="confetti-layer" id="confetti"></div>
+
+  <div class="pay-wrap">
+    <div class="pay-card">
+
+      <!-- 1) e-mail -->
+      <div id="step-email">
+        <div class="pay-emoji">🏆</div>
+        <h1>Quase seu!</h1>
+        <p>Pra onde enviamos o seu <b>Álbum Completo da Copa 2026</b>?</p>
+        <div class="field">
+          <label for="email">Seu melhor e-mail</label>
+          <input id="email" type="email" inputmode="email" autocomplete="email" placeholder="voce@email.com">
+        </div>
+        <div class="err" id="emailErr"></div>
+        <button id="genPix" class="btn btn-red btn-block btn-lg">Pagar com Pix ⚡</button>
+        <div class="alt"><a id="goCard">Prefiro cartão ou boleto →</a></div>
+        <a class="back" href="/">← Voltar</a>
+      </div>
+
+      <!-- 2) carregando -->
+      <div id="step-loading" class="hide">
+        <div class="pay-emoji">⏳</div>
+        <h1>Gerando seu Pix…</h1>
+        <div class="spin"></div>
+      </div>
+
+      <!-- 3) QR do Pix -->
+      <div id="step-pix" class="hide">
+        <h1>Escaneie pra pagar</h1>
+        <p>Abra o app do seu banco e leia o QR. A confirmação é <b>na hora</b>.</p>
+        <div class="valor" id="pixValor">R$ 0,00</div>
+        <img id="qrImg" class="qr-img" alt="QR Code Pix">
+        <div class="copy-row">
+          <input id="pixCopia" readonly>
+          <button id="copyBtn" class="btn btn-dark">Copiar</button>
+        </div>
+        <div class="waiting-note"><div class="spin" style="width:18px;height:18px;border-width:3px;margin:0"></div> Aguardando o pagamento…</div>
+        <p class="small">Pode deixar esta página aberta — assim que o Pix cair, ela libera o download sozinha. 🎉</p>
+        <div class="alt"><a id="goCard2">Prefiro cartão ou boleto →</a></div>
+      </div>
+
+      <!-- 4) aprovado -->
+      <div id="step-done" class="hide">
+        <div class="pay-emoji">🎉</div>
+        <h1>Parabéns pela compra!</h1>
+        <p>Seu álbum completo está liberado. Toque pra baixar:</p>
+        <p style="margin:18px 0"><a id="dlBtn" class="btn btn-red btn-lg" href="#">⬇️ Baixar meu álbum</a></p>
+        <p class="small">Também enviamos o link pro seu e-mail. O PDF é grande (alta qualidade) — em conexões lentas pode levar alguns minutos.</p>
+      </div>
+
+      <!-- 5) demora -->
+      <div id="step-late" class="hide">
+        <div class="pay-emoji">📬</div>
+        <h1>Tá quase!</h1>
+        <p>Seu pagamento pode levar alguns minutos pra confirmar. Assim que aprovar, enviamos o link de download pro seu e-mail automaticamente.</p>
+        <p style="margin-top:18px"><a class="btn btn-ghost" href="/">Voltar ao início</a></p>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const $ = (s) => document.querySelector(s);
+    const params = new URLSearchParams(location.search);
+    let order = params.get('order');
+    const fmtBRL = (v) => 'R$ ' + Number(v).toFixed(2).replace('.', ',');
+
+    function show(id){
+      ['step-email','step-loading','step-pix','step-done','step-late']
+        .forEach(x => $('#'+x).classList.toggle('hide', x !== id));
+    }
+
+    /* confete (mesmo estilo do site) */
+    function confetti(){
+      const layer = $('#confetti'); if(!layer) return;
+      const cores = ["#ea0000","#ffcf3f","#1d8b3a","#fff","#111"];
+      for(let i=0;i<90;i++){
+        const c=document.createElement('div'); const s=6+Math.random()*9;
+        c.style.cssText=`position:absolute;top:-20px;left:${Math.random()*100}%;width:${s}px;height:${s*0.6}px;background:${cores[i%cores.length]};border-radius:2px;transform:rotate(${Math.random()*360}deg)`;
+        layer.appendChild(c);
+        c.animate([{top:'-20px'},{top:'105%',transform:`rotate(${Math.random()*720}deg)`}],
+          {duration:2000+Math.random()*1500,easing:'cubic-bezier(.2,.6,.4,1)'}).onfinish=()=>c.remove();
+      }
+    }
+
+    /* validação simples de e-mail */
+    const okEmail = (e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(String(e||'').trim());
+
+    /* polling do status — comemora sozinho quando aprovar */
+    let polling = false, tries = 0;
+    async function poll(){
+      if(!order || polling) return;
+      polling = true;
+      try{
+        const r = await fetch('/api/status/'+encodeURIComponent(order), {cache:'no-store'});
+        const d = await r.json();
+        if(d.status === 'paid' && d.download){
+          $('#dlBtn').href = d.download;
+          show('done'); confetti();
+          polling = false; return;
+        }
+      }catch(e){}
+      tries++;
+      polling = false;
+      if(tries > 380){ show('late'); return; }   // ~25 min e ainda assim avisa por e-mail
+      setTimeout(poll, 4000);
+    }
+
+    /* gerar Pix */
+    async function gerarPix(){
+      const email = $('#email').value.trim();
+      if(!okEmail(email)){ $('#emailErr').textContent = 'Digite um e-mail válido.'; return; }
+      $('#emailErr').textContent = '';
+      show('loading');
+      try{
+        const r = await fetch('/api/criar-pix', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ email })
+        });
+        const d = await r.json();
+        if(!d.ok || !d.qr_code) throw new Error(d.erro || 'falha');
+        order = d.id;
+        history.replaceState(null, '', '/pagamento.html?order='+encodeURIComponent(order));
+        $('#pixValor').textContent = fmtBRL(d.valor);
+        $('#qrImg').src = 'data:image/png;base64,' + d.qr_code_base64;
+        $('#pixCopia').value = d.qr_code;
+        show('pix');
+        tries = 0; poll();
+      }catch(e){
+        show('email');
+        $('#emailErr').textContent = 'Não consegui gerar o Pix agora. Tente o cartão/boleto ou tente de novo.';
+      }
+    }
+
+    /* cartão / boleto (Checkout Pro do MP) */
+    async function pagarCartao(){
+      const email = $('#email').value.trim();
+      if(!okEmail(email)){ show('email'); $('#emailErr').textContent = 'Digite seu e-mail antes.'; return; }
+      show('loading');
+      try{
+        const r = await fetch('/api/criar-pagamento', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ email })
+        });
+        const d = await r.json();
+        if(d.ok && d.init_point){ location.href = d.init_point; return; }
+        throw new Error('falha');
+      }catch(e){
+        show('email');
+        $('#emailErr').textContent = 'Não consegui abrir o checkout agora. Tente novamente.';
+      }
+    }
+
+    $('#genPix').addEventListener('click', gerarPix);
+    $('#email').addEventListener('keydown', (e)=>{ if(e.key==='Enter') gerarPix(); });
+    $('#goCard').addEventListener('click', pagarCartao);
+    $('#goCard2').addEventListener('click', pagarCartao);
+    $('#copyBtn').addEventListener('click', async ()=>{
+      const txt = $('#pixCopia').value;
+      try{ await navigator.clipboard.writeText(txt); }
+      catch{ $('#pixCopia').select(); document.execCommand('copy'); }
+      $('#copyBtn').textContent = 'Copiado ✓';
+      setTimeout(()=>{ $('#copyBtn').textContent = 'Copiar'; }, 1800);
+    });
+
+    /* se voltou com ?order= (refresh), retoma o acompanhamento */
+    if(order){ show('loading'); poll(); }
+    else { show('email'); $('#email').focus(); }
+  </script>
+</body>
+</html>

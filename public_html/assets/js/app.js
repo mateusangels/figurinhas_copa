@@ -9,25 +9,12 @@
   const NOMES = {br:"Brasil",ar:"Argentina",fr:"França",de:"Alemanha",es:"Espanha","gb-eng":"Inglaterra",pt:"Portugal",nl:"Holanda",be:"Bélgica",hr:"Croácia",uy:"Uruguai",co:"Colômbia",mx:"México",us:"EUA",ca:"Canadá",jp:"Japão",kr:"Coreia",ma:"Marrocos",sn:"Senegal",gh:"Gana",cm:"Camarões",ci:"C. Marfim",dz:"Argélia",eg:"Egito",tn:"Tunísia",za:"África do Sul",au:"Austrália",ir:"Irã",sa:"A. Saudita",qa:"Catar",uz:"Uzbequistão",ec:"Equador",py:"Paraguai",dk:"Dinamarca",se:"Suécia",no:"Noruega",ch:"Suíça",at:"Áustria","gb-sct":"Escócia",rs:"Sérvia",tr:"Turquia",cz:"Tchéquia",nz:"N. Zelândia",pa:"Panamá",cd:"RD Congo",ba:"Bósnia",iq:"Iraque",ng:"Nigéria"};
 
   let buying = false;
-  async function checkout() {
+  function checkout() {
     if (buying) return;
     buying = true;
     confetti();
-    try {
-      const r = await fetch("/api/criar-pagamento", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
-      const d = await r.json();          // se rodar sem PHP (preview local), cai no catch
-      if (d && d.ok && d.init_point) {
-        location.href = d.init_point;     // vai pro checkout do Mercado Pago
-        return;
-      }
-      throw new Error("sem init_point");
-    } catch (e) {
-      buying = false;
-      // Fallback: ambiente de preview sem PHP (ex.: localhost:5173)
-      alert("🔧 Modo de demonstração (sem servidor PHP)\n\n" +
-            "No servidor real (Hostinger com PHP), este botão cria o pagamento no " +
-            "Mercado Pago e te leva pro Pix/cartão.\n\nÁlbum completo — " + fmt(cfg.precoAlbum));
-    }
+    // Leva pra tela de pagamento do próprio site (Pix com QR + comemoração automática).
+    setTimeout(() => { location.href = "/pagamento.html"; }, 250);
   }
 
   /* confete ao comprar / divertido */

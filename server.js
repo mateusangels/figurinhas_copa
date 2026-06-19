@@ -12,7 +12,16 @@ import nodemailer from 'nodemailer';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PORT = process.env.PORT || 3333;
-const FRONT = process.env.FRONTEND_URL || `http://localhost:${PORT}`;
+// Garante esquema https:// nas URLs públicas (se esquecer no .env, o Mercado Pago
+// recusa back_urls/notification_url e o Pix quebra com "tente novamente").
+function comEsquema(u, fallback) {
+  u = String(u || '').trim();
+  if (!u) return fallback;
+  if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+  return u.replace(/\/+$/, '');
+}
+const FRONT = comEsquema(process.env.FRONTEND_URL, `http://localhost:${PORT}`);
+const BACK  = comEsquema(process.env.BACKEND_URL, FRONT);
 const PRECO = Number(process.env.PRECO_ALBUM || 29.90);
 
 const PUBLIC_DIR = path.join(__dirname, 'public_html');
@@ -117,18 +126,23 @@ async function conferirPagamentoNoMP(id) {
 }
 
 /* ── API ─────────────────────────────────────────────────────────────────── */
+// Cartão/boleto — Checkout Pro (redirect). O Pix tem fluxo próprio em /api/criar-pix.
 app.post('/api/criar-pagamento', async (req, res) => {
   try {
     const mp = await getMercadoPago();
     if (!mp) return res.status(503).json({ erro: 'Pagamento ainda não configurado (defina MP_ACCESS_TOKEN).' });
+    const email = String(req.body?.email || '').trim() || null;
     const id = novoId();
-    setPedido({ id, token: crypto.randomBytes(16).toString('hex'), status: 'pendente', email: null, criado: new Date().toISOString() });
+    setPedido({ id, token: crypto.randomBytes(16).toString('hex'), status: 'pendente', email, criado: new Date().toISOString() });
     registrar('checkout'); // clicou em comprar (gerou intenção de pagamento)
     const ehLocal = /localhost|127\.0\.0\.1/.test(FRONT);
     const body = {
       items: [{ id: 'album-copa-2026', title: 'Álbum Completo da Copa 2026 (PDF)', quantity: 1, unit_price: Number(PRECO), currency_id: 'BRL' }],
+      ...(email ? { payer: { email } } : {}),
       external_reference: id,
-      notification_url: `${process.env.BACKEND_URL || FRONT}/api/webhook`,
+      notification_url: `${BACK}/api/webhook`,
+      // Pix tem tela própria no site; aqui deixamos só cartão/boleto.
+      payment_methods: { excluded_payment_types: [{ id: 'bank_transfer' }] },
       back_urls: {
         success: `${FRONT}/sucesso.html?order=${id}`,
         pending: `${FRONT}/sucesso.html?order=${id}`,
@@ -142,6 +156,43 @@ app.post('/api/criar-pagamento', async (req, res) => {
   } catch (e) {
     console.error('criar-pagamento', e?.message || e);
     res.status(500).json({ erro: 'Falha ao criar pagamento' });
+  }
+});
+
+// Pix — gera o QR DENTRO do site (Checkout Transparente). A página fica consultando
+// /api/status/:id e comemora sozinha quando o pagamento cai.
+app.post('/api/criar-pix', async (req, res) => {
+  try {
+    const mp = await getMercadoPago();
+    if (!mp) return res.status(503).json({ erro: 'Pagamento ainda não configurado (defina MP_ACCESS_TOKEN).' });
+    const email = String(req.body?.email || '').trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return res.status(400).json({ erro: 'E-mail inválido.' });
+    const id = novoId();
+    setPedido({ id, token: crypto.randomBytes(16).toString('hex'), status: 'pendente', email, criado: new Date().toISOString() });
+    registrar('checkout');
+    const payment = await new mp.Payment(mp.client).create({
+      body: {
+        transaction_amount: Number(PRECO),
+        description: 'Álbum Completo da Copa 2026 (PDF)',
+        payment_method_id: 'pix',
+        payer: { email },
+        external_reference: id,
+        notification_url: `${BACK}/api/webhook`,
+      },
+      requestOptions: { idempotencyKey: id },
+    });
+    const tx = payment?.point_of_interaction?.transaction_data || {};
+    if (!tx.qr_code) throw new Error('Pix sem QR (verifique chave Pix/valor mínimo na conta MP)');
+    res.json({
+      ok: true, id,
+      qr_code: tx.qr_code,                 // copia-e-cola
+      qr_code_base64: tx.qr_code_base64,   // imagem PNG (base64)
+      ticket_url: tx.ticket_url || null,
+      valor: Number(PRECO),
+    });
+  } catch (e) {
+    console.error('criar-pix', e?.message || e);
+    res.status(500).json({ erro: 'Falha ao gerar o Pix' });
   }
 });
 
