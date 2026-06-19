@@ -25,7 +25,6 @@ const BACK  = comEsquema(process.env.BACKEND_URL, FRONT);
 const PRECO = Number(process.env.PRECO_ALBUM || 29.90);
 
 const PUBLIC_DIR = path.join(__dirname, 'public_html');
-const PDF_PATH   = path.join(__dirname, 'private', 'album', 'album-completo-copa-2026.pdf');
 const PDF_NAME   = 'Album-Completo-Copa-2026.pdf';
 // Pedidos/métricas: por padrão em private/, mas DATA_DIR permite apontar pra uma
 // pasta FORA do deploy (ex.: /home/usuario/figurinhas-data) p/ não sumir a cada deploy.
@@ -33,6 +32,15 @@ const DATA_DIR    = process.env.DATA_DIR || path.join(__dirname, 'private');
 const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
 const STATS_FILE  = path.join(DATA_DIR, 'analytics.json');
 const DASHBOARD_PATH = path.join(__dirname, 'private', 'dashboard.html');
+// PDF: também precisa viver FORA do deploy. Procura no DATA_DIR (persistente) e,
+// como fallback, no local antigo dentro do app. PDF_PATH no .env sobrescreve tudo.
+const PDF_PATH        = process.env.PDF_PATH || path.join(DATA_DIR, 'album', 'album-completo-copa-2026.pdf');
+const PDF_PATH_LEGADO = path.join(__dirname, 'private', 'album', 'album-completo-copa-2026.pdf');
+function caminhoPDF() {
+  if (fs.existsSync(PDF_PATH)) return PDF_PATH;
+  if (fs.existsSync(PDF_PATH_LEGADO)) return PDF_PATH_LEGADO;
+  return null;
+}
 
 const app = express();
 app.set('trust proxy', true); // atrás do proxy da Hostinger, pega o IP/proto real
@@ -270,8 +278,9 @@ app.get('/api/status/:id', async (req, res) => {
 app.get('/api/download/:token', (req, res) => {
   const p = pedidoPorToken(req.params.token);
   if (!p || p.status !== 'pago') return res.status(403).send('Acesso negado. Pagamento não localizado.');
-  if (!fs.existsSync(PDF_PATH)) return res.status(404).send('Arquivo indisponível no momento.');
-  res.download(PDF_PATH, PDF_NAME);
+  const arquivo = caminhoPDF();
+  if (!arquivo) return res.status(404).send('Arquivo indisponível no momento.');
+  res.download(arquivo, PDF_NAME);
 });
 
 // Beacon de visita disparado pelo front (só aceitamos o evento "visita" do cliente).
@@ -337,6 +346,9 @@ app.get('/api/admin/info', requireAdmin, (req, res) => {
     home: process.env.HOME || null,
     dataDirAtual: DATA_DIR,       // onde os pedidos estão sendo salvos agora
     sugestaoDataDir: sugestao,    // valor recomendado pro DATA_DIR (fora do app)
+    pdfEsperado: PDF_PATH,        // onde subir o PDF (persistente)
+    pdfLegado: PDF_PATH_LEGADO,   // local antigo (dentro do app, some no deploy)
+    pdfEncontrado: caminhoPDF(),  // null = PDF não está em lugar nenhum
   });
 });
 
