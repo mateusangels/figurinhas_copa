@@ -96,14 +96,43 @@ async function enviarEmail(pedido) {
   if (!pedido.email) return { ok: false, motivo: 'pedido sem e-mail' };
   const t = getMailer(); if (!t) return { ok: false, motivo: 'SMTP não configurado (SMTP_HOST/USER/PASS)' };
   const link = `${FRONT}/api/download/${pedido.token}`;
-  const html = `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto">
-    <h2 style="color:#ea0000">Pagamento aprovado! 🎉</h2>
-    <p>Obrigado pela compra! Clique para baixar o seu <b>Álbum Completo da Copa 2026</b> em PDF:</p>
-    <p><a href="${link}" style="background:#ea0000;color:#fff;padding:14px 26px;border-radius:999px;text-decoration:none;font-weight:bold">⬇️ Baixar meu álbum</a></p>
-    <p style="color:#666;font-size:13px">Ou copie o link: ${link}</p></div>`;
+  const ff = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif";
+  const html = `<!doctype html><html><body style="margin:0;padding:0;background:#fff6f0;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fff6f0;padding:28px 12px;font-family:${ff};">
+    <tr><td align="center">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:520px;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 18px 40px -18px rgba(120,0,0,.28);">
+        <!-- header -->
+        <tr><td align="center" style="background:#ea0000;padding:34px 30px 28px;">
+          <div style="font-size:48px;line-height:1;">🏆</div>
+          <div style="color:#ffffff;font-size:13px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;margin-top:10px;opacity:.9;">Álbum da Copa 2026</div>
+          <div style="color:#ffffff;font-size:26px;font-weight:800;margin-top:6px;">Pagamento aprovado! 🎉</div>
+        </td></tr>
+        <!-- corpo -->
+        <tr><td style="padding:34px 34px 12px;color:#1a1a1a;">
+          <p style="margin:0 0 14px;font-size:17px;line-height:1.5;">Que jogo! ⚽ Seu pagamento entrou e o seu <b>Álbum Completo da Copa 2026</b> em PDF já está liberado.</p>
+          <p style="margin:0 0 26px;font-size:15px;line-height:1.5;color:#6c6c6c;">Toque no botão abaixo para baixar agora — todas as seleções e figurinhas em alta qualidade.</p>
+          <!-- botão bulletproof -->
+          <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:0 auto 24px;">
+            <tr><td align="center" bgcolor="#ea0000" style="border-radius:999px;">
+              <a href="${link}" style="display:inline-block;padding:16px 40px;font-size:17px;font-weight:800;color:#ffffff;text-decoration:none;border-radius:999px;font-family:${ff};">⬇️ Baixar meu álbum</a>
+            </td></tr>
+          </table>
+          <p style="margin:0 0 6px;font-size:13px;color:#9a8f88;">Se o botão não funcionar, copie e cole este link no navegador:</p>
+          <p style="margin:0 0 8px;font-size:12px;word-break:break-all;"><a href="${link}" style="color:#ea0000;">${link}</a></p>
+        </td></tr>
+        <!-- rodapé -->
+        <tr><td style="padding:20px 34px 32px;border-top:1px solid #eadfd7;">
+          <p style="margin:0;font-size:12px;line-height:1.6;color:#9a8f88;">📦 O arquivo é grande (PDF em alta qualidade) — em conexões lentas o download pode levar alguns minutos. Guarde este e-mail: o link continua valendo para baixar de novo.</p>
+          <p style="margin:14px 0 0;font-size:12px;color:#c9bcb3;">Obrigado pela compra! — Álbum da Copa 2026 🇧🇷</p>
+        </td></tr>
+      </table>
+      <div style="max-width:520px;color:#c9bcb3;font-size:11px;margin-top:16px;">Você recebeu este e-mail porque comprou o Álbum Completo da Copa 2026.</div>
+    </td></tr>
+  </table></body></html>`;
+  const text = `Pagamento aprovado! 🎉\n\nSeu Álbum Completo da Copa 2026 (PDF) está liberado.\nBaixe aqui: ${link}\n\nO arquivo é grande; em conexões lentas pode levar alguns minutos. Guarde este e-mail — o link continua valendo.\n\nObrigado pela compra!`;
   try {
-    const info = await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: pedido.email,
-      subject: 'Seu Álbum Completo da Copa 2026 está pronto! 🏆', html });
+    const info = await t.sendMail({ from: `"Álbum da Copa 2026" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`, to: pedido.email,
+      subject: '🏆 Seu Álbum Completo da Copa 2026 está pronto!', html, text });
     console.log('email enviado p/', pedido.email, '-', info?.response || info?.messageId || 'ok');
     return { ok: true, to: pedido.email, resposta: info?.response || info?.messageId || 'enviado' };
   } catch (e) {
