@@ -112,7 +112,7 @@
 
     function show(id){
       ['step-email','step-loading','step-pix','step-done','step-late']
-        .forEach(x => $('#'+x).classList.toggle('hide', x !== id));
+        .forEach(x => $('#'+x).classList.toggle('hide', x !== 'step-' + id));
     }
 
     /* confete (mesmo estilo do site) */
