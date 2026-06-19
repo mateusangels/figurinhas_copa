@@ -27,8 +27,11 @@ const PRECO = Number(process.env.PRECO_ALBUM || 29.90);
 const PUBLIC_DIR = path.join(__dirname, 'public_html');
 const PDF_PATH   = path.join(__dirname, 'private', 'album', 'album-completo-copa-2026.pdf');
 const PDF_NAME   = 'Album-Completo-Copa-2026.pdf';
-const ORDERS_FILE = path.join(__dirname, 'private', 'orders.json');
-const STATS_FILE  = path.join(__dirname, 'private', 'analytics.json');
+// Pedidos/métricas: por padrão em private/, mas DATA_DIR permite apontar pra uma
+// pasta FORA do deploy (ex.: /home/usuario/figurinhas-data) p/ não sumir a cada deploy.
+const DATA_DIR    = process.env.DATA_DIR || path.join(__dirname, 'private');
+const ORDERS_FILE = path.join(DATA_DIR, 'orders.json');
+const STATS_FILE  = path.join(DATA_DIR, 'analytics.json');
 const DASHBOARD_PATH = path.join(__dirname, 'private', 'dashboard.html');
 
 const app = express();
@@ -114,7 +117,9 @@ async function aoConfirmarPagamento(id, email) {
   const p = getPedido(id);
   if (!p || p.status === 'pago') return;
   p.status = 'pago';
-  if (email) p.email = email;
+  // Preserva o e-mail que o comprador digitou (destino do PDF). Só usa o e-mail
+  // vindo do MP como fallback, pois o pagador do Pix pode ter outro e-mail.
+  if (email && !p.email) p.email = email;
   setPedido(p);
   registrar('pago', { valor: PRECO }); // venda confirmada
   await enviarEmail(p);
