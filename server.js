@@ -117,8 +117,9 @@ async function aoConfirmarPagamento(id, email) {
   let p = getPedido(id);
   if (!p) {
     // Rede de segurança: o pedido sumiu (ex.: orders.json resetado num deploy).
-    // Recria a partir do external_reference pra NÃO perder a venda nem o e-mail.
-    if (!id) return;
+    // SÓ recria pedidos do álbum (al_) — o token do MP é compartilhado com outros
+    // projetos (curriculou cv_, etc.), e não podemos sequestrar pagamentos deles.
+    if (!/^al_/.test(String(id))) return;
     p = { id, token: crypto.randomBytes(16).toString('hex'), status: 'pendente', email: null, criado: new Date().toISOString() };
     console.warn('pedido ausente, recriado via pagamento aprovado:', id);
   }
@@ -314,8 +315,9 @@ app.get('/api/admin/reenviar/:id', requireAdmin, async (req, res) => {
 app.get('/api/admin/reconciliar', requireAdmin, async (req, res) => {
   const mp = await getMercadoPago();
   if (!mp) return res.status(503).json({ erro: 'MP não configurado' });
-  const r = await new mp.Payment(mp.client).search({ options: { sort: 'date_created', criteria: 'desc', limit: 30 } });
-  const aprovados = (r?.results || []).filter((p) => p?.status === 'approved' && p?.external_reference);
+  const r = await new mp.Payment(mp.client).search({ options: { sort: 'date_created', criteria: 'desc', limit: 50 } });
+  // SÓ pedidos do álbum (al_). O token do MP é compartilhado com outros projetos.
+  const aprovados = (r?.results || []).filter((p) => p?.status === 'approved' && /^al_/.test(p?.external_reference || ''));
   const out = [];
   for (const pay of aprovados) {
     const jaPago = getPedido(pay.external_reference)?.status === 'pago';
@@ -328,6 +330,15 @@ app.get('/api/admin/reconciliar', requireAdmin, async (req, res) => {
     out.push({ payment: pay.id, extref: pay.external_reference, email: d?.email || null, status: d?.status || null, jaEra: jaPago });
   }
   res.json({ aprovados: aprovados.length, processados: out });
+});
+
+// Remove pedidos que não são do álbum (ids fora do padrão al_), criados por engano.
+app.get('/api/admin/limpar-orfaos', requireAdmin, (req, res) => {
+  const o = lerPedidos();
+  const removidos = Object.keys(o).filter((id) => !/^al_/.test(id));
+  removidos.forEach((id) => delete o[id]);
+  salvarPedidos(o);
+  res.json({ removidos: removidos.length, ids: removidos, restantes: Object.keys(o).length });
 });
 
 /* ── Site estático ───────────────────────────────────────────────────────── */
