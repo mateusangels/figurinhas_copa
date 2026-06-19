@@ -328,6 +328,18 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
 });
 app.get(['/admin', '/dashboard'], requireAdmin, (req, res) => res.sendFile(DASHBOARD_PATH));
 
+// Mostra os caminhos reais do servidor — pra descobrir o valor certo do DATA_DIR.
+app.get('/api/admin/info', requireAdmin, (req, res) => {
+  const sugestao = path.join(path.dirname(__dirname), 'figurinhas-data'); // pasta irmã da do app
+  res.json({
+    appDir: __dirname,            // onde o código roda (é apagado/reescrito no deploy)
+    cwd: process.cwd(),
+    home: process.env.HOME || null,
+    dataDirAtual: DATA_DIR,       // onde os pedidos estão sendo salvos agora
+    sugestaoDataDir: sugestao,    // valor recomendado pro DATA_DIR (fora do app)
+  });
+});
+
 // Reenvia o e-mail do PDF de um pedido e RETORNA o resultado real do SMTP.
 // Uso: /api/admin/reenviar/<id_do_pedido>?email=opcional@trocar.com
 app.get('/api/admin/reenviar/:id', requireAdmin, async (req, res) => {
