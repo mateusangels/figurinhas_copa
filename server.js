@@ -114,8 +114,15 @@ async function enviarEmail(pedido) {
 
 /* ── Confirmação de pagamento ────────────────────────────────────────────── */
 async function aoConfirmarPagamento(id, email) {
-  const p = getPedido(id);
-  if (!p || p.status === 'pago') return;
+  let p = getPedido(id);
+  if (!p) {
+    // Rede de segurança: o pedido sumiu (ex.: orders.json resetado num deploy).
+    // Recria a partir do external_reference pra NÃO perder a venda nem o e-mail.
+    if (!id) return;
+    p = { id, token: crypto.randomBytes(16).toString('hex'), status: 'pendente', email: null, criado: new Date().toISOString() };
+    console.warn('pedido ausente, recriado via pagamento aprovado:', id);
+  }
+  if (p.status === 'pago') return;
   p.status = 'pago';
   // Preserva o e-mail que o comprador digitou (destino do PDF). Só usa o e-mail
   // vindo do MP como fallback, pois o pagador do Pix pode ter outro e-mail.
@@ -300,6 +307,27 @@ app.get('/api/admin/reenviar/:id', requireAdmin, async (req, res) => {
   const alvo = dest ? { ...p, email: dest } : p;
   const r = await enviarEmail(alvo);
   res.json({ pedido: p.id, status: p.status, para: alvo.email || null, ...r });
+});
+
+// Reconcilia pagamentos aprovados no MP que não viraram "pago" aqui (ex.: pedido
+// perdido em deploy). Confirma e envia o e-mail. Uso: /api/admin/reconciliar
+app.get('/api/admin/reconciliar', requireAdmin, async (req, res) => {
+  const mp = await getMercadoPago();
+  if (!mp) return res.status(503).json({ erro: 'MP não configurado' });
+  const r = await new mp.Payment(mp.client).search({ options: { sort: 'date_created', criteria: 'desc', limit: 30 } });
+  const aprovados = (r?.results || []).filter((p) => p?.status === 'approved' && p?.external_reference);
+  const out = [];
+  for (const pay of aprovados) {
+    const jaPago = getPedido(pay.external_reference)?.status === 'pago';
+    let email = pay.payer?.email;
+    if (!jaPago && (!email || /X{3,}/.test(email))) {
+      try { const full = await new mp.Payment(mp.client).get({ id: pay.id }); email = full?.payer?.email || email; } catch {}
+    }
+    await aoConfirmarPagamento(pay.external_reference, email);
+    const d = getPedido(pay.external_reference);
+    out.push({ payment: pay.id, extref: pay.external_reference, email: d?.email || null, status: d?.status || null, jaEra: jaPago });
+  }
+  res.json({ aprovados: aprovados.length, processados: out });
 });
 
 /* ── Site estático ───────────────────────────────────────────────────────── */
