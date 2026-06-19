@@ -90,8 +90,8 @@ function getMailer() {
   return _mailer;
 }
 async function enviarEmail(pedido) {
-  if (!pedido.email) return;
-  const t = getMailer(); if (!t) return;
+  if (!pedido.email) return { ok: false, motivo: 'pedido sem e-mail' };
+  const t = getMailer(); if (!t) return { ok: false, motivo: 'SMTP não configurado (SMTP_HOST/USER/PASS)' };
   const link = `${FRONT}/api/download/${pedido.token}`;
   const html = `<div style="font-family:Arial,sans-serif;max-width:520px;margin:auto">
     <h2 style="color:#ea0000">Pagamento aprovado! 🎉</h2>
@@ -99,9 +99,14 @@ async function enviarEmail(pedido) {
     <p><a href="${link}" style="background:#ea0000;color:#fff;padding:14px 26px;border-radius:999px;text-decoration:none;font-weight:bold">⬇️ Baixar meu álbum</a></p>
     <p style="color:#666;font-size:13px">Ou copie o link: ${link}</p></div>`;
   try {
-    await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: pedido.email,
+    const info = await t.sendMail({ from: process.env.SMTP_FROM || process.env.SMTP_USER, to: pedido.email,
       subject: 'Seu Álbum Completo da Copa 2026 está pronto! 🏆', html });
-  } catch (e) { console.error('email', e?.message || e); }
+    console.log('email enviado p/', pedido.email, '-', info?.response || info?.messageId || 'ok');
+    return { ok: true, to: pedido.email, resposta: info?.response || info?.messageId || 'enviado' };
+  } catch (e) {
+    console.error('email', e?.message || e);
+    return { ok: false, motivo: e?.message || String(e) };
+  }
 }
 
 /* ── Confirmação de pagamento ────────────────────────────────────────────── */
@@ -280,6 +285,17 @@ app.get('/api/admin/stats', requireAdmin, (req, res) => {
   });
 });
 app.get(['/admin', '/dashboard'], requireAdmin, (req, res) => res.sendFile(DASHBOARD_PATH));
+
+// Reenvia o e-mail do PDF de um pedido e RETORNA o resultado real do SMTP.
+// Uso: /api/admin/reenviar/<id_do_pedido>?email=opcional@trocar.com
+app.get('/api/admin/reenviar/:id', requireAdmin, async (req, res) => {
+  const p = getPedido(req.params.id);
+  if (!p) return res.status(404).json({ ok: false, motivo: 'pedido não encontrado' });
+  const dest = String(req.query.email || '').trim();
+  const alvo = dest ? { ...p, email: dest } : p;
+  const r = await enviarEmail(alvo);
+  res.json({ pedido: p.id, status: p.status, para: alvo.email || null, ...r });
+});
 
 /* ── Site estático ───────────────────────────────────────────────────────── */
 app.use(express.static(PUBLIC_DIR));
